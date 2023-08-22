@@ -38,6 +38,7 @@ def arg_parse(config):
     parser.add_argument("--load_model", type=str2bool, default=config["load_model"], help="Whether to load a pre-trained model or not.")
     parser.add_argument("--train_mae", type=str2bool, default=config["train_mae"], help="Whether to train mae task.")
     parser.add_argument("--model_path", type=str, default=config["model_path"], help="Path to the pre-trained model.")
+    parser.add_argument("--model_name", type=str, default=config["model_path"], help="Filename of the model.")
     parser.add_argument("--train_mode", type=str2bool, default=config["train_mode"], help="Whether to train the model")
     parser.add_argument("--use_pretrained_resnet", type=str2bool, default=config["train_mode"], help="Whether to use pre-trained ResNet")
     return parser.parse_args()
@@ -64,7 +65,8 @@ if __name__ == '__main__':
                     use_pretrained_resnet=args.use_pretrained_resnet)
 
     if args.load_model:
-        model.load_state_dict(torch.load(args.model_path + '.h5'))
+        model.load_state_dict(torch.load(args.model_path + args.model_name + '.h5'))
+        print(f'Loaded model from {args.model_path + args.model_name + ".h5"}')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
@@ -77,14 +79,17 @@ if __name__ == '__main__':
 
         for epoch in range(args.epochs + 1):
             train_loss = train(args, epoch, model, train_loader, criterion, optimizer, device, writer)
+
             if epoch % 5 == 0:
                 val_loss, accuracy, precision, recall = validate(args, model, val_loader, criterion, device, epoch, writer)
             print(f'Epoch {epoch}/{args.epochs} - Train Loss: {train_loss:.4f}')
 
         writer.close()
+        print('Finished training the model.')
     else:
         print('Training mode is off, only testing the model.')
 
     # Test the model
+    print('Testing the model:')
     validate(args, model, test_loader, nn.BCEWithLogitsLoss(), device, 0, None, is_test=True)
 

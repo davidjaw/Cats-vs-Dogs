@@ -8,5 +8,6 @@ network_type: 4
 num_classes: 2
 load_model: true
 model_path: "weights/"
+model_name: "model"
 train_mae: true
 train_mode: true
