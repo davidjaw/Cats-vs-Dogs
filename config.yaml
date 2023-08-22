@@ -1,0 +1,12 @@
+dataset_path: "G:\\dataset\\dogs-vs-cats\\train"
+batch_size: 128
+epochs: 10
+use_norm: true
+use_drop: true
+img_size: 224
+network_type: 4
+num_classes: 2
+load_model: true
+model_path: "weights/"
+train_mae: true
+train_mode: true
