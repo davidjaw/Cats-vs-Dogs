@@ -38,9 +38,9 @@ def arg_parse(config):
     parser.add_argument("--load_model", type=str2bool, default=config["load_model"], help="Whether to load a pre-trained model or not.")
     parser.add_argument("--train_mae", type=str2bool, default=config["train_mae"], help="Whether to train mae task.")
     parser.add_argument("--model_path", type=str, default=config["model_path"], help="Path to the pre-trained model.")
-    parser.add_argument("--model_name", type=str, default=config["model_path"], help="Filename of the model.")
+    parser.add_argument("--model_name", type=str, default=config["model_name"], help="Filename of the model.")
     parser.add_argument("--train_mode", type=str2bool, default=config["train_mode"], help="Whether to train the model")
-    parser.add_argument("--use_pretrained_resnet", type=str2bool, default=config["train_mode"], help="Whether to use pre-trained ResNet")
+    parser.add_argument("--use_pretrained_resnet", type=str2bool, default=config["use_pretrained_resnet"], help="Whether to use pre-trained ResNet")
     return parser.parse_args()
 
 
