@@ -102,12 +102,11 @@ def validate(args, model, val_loader, criterion, device, epoch, writer, is_test=
     fpr, tpr, _ = torchmetrics.functional.roc(all_outputs, all_labels.long(), num_classes=args.num_classes, task='binary')
 
     if is_test:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-        fig.suptitle(f'Accuracy: {accuracy * 100:.2f}, Precision: {precision * 100:.2f}, Recall: {recall * 100:.2f}',
-                     y=1.02)
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(17, 8))
         plot_confusion_matrix(conf_matrix, classes=[i for i in range(args.num_classes)], ax=ax1)
         plot_roc_curve(fpr, tpr, ax=ax2)
         fig.tight_layout()
+        fig.suptitle(f'Accuracy: {accuracy * 100:.2f}%, Precision: {precision * 100:.2f}%, Recall: {recall * 100:.2f}%')
         fig.savefig('result.png')
         print(f'\t[Test] Accuracy: {accuracy:.4f}, Precision: {precision:.4f}, Recall: {recall:.4f}')
     else:  # Validation phase
@@ -117,11 +116,12 @@ def validate(args, model, val_loader, criterion, device, epoch, writer, is_test=
         writer.add_scalar('Valid/Accuracy', accuracy, epoch)
         writer.add_scalar('Valid/Precision', precision, epoch)
         writer.add_scalar('Valid/Recall', recall, epoch)
-        writer.add_figure('Valid/Confusion_Matrix',
-                          plot_confusion_matrix(conf_matrix, classes=[i for i in range(args.num_classes)]), epoch)
-        writer.add_figure('Valid/ROC_Curve', plot_roc_curve(fpr, tpr), epoch)
+        _, fig = plot_confusion_matrix(conf_matrix, classes=[i for i in range(args.num_classes)])
+        writer.add_figure('Valid/Confusion_Matrix', fig, epoch)
+        _, fig = plot_roc_curve(fpr, tpr)
+        writer.add_figure('Valid/ROC_Curve', fig, epoch)
 
-        torch.save(model.state_dict(), f'{args.model_path}-{epoch}.h5')
+        torch.save(model.state_dict(), f'{args.model_path}{args.model_name}-{epoch}.h5')
 
     return average_loss, accuracy, precision, recall
 
@@ -130,7 +130,9 @@ def plot_confusion_matrix(cm, classes, ax=None):
     cm = cm.cpu().numpy()
     # This function plots the confusion matrix using matplotlib and returns the plot as a figure
     if ax is None:
-        _, ax = plt.subplots()
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
     ax.imshow(cm, interpolation='nearest', cmap=plt.cm.Blues)
     ax.set_title('Confusion matrix')
     tick_marks = np.arange(len(classes))
@@ -144,7 +146,7 @@ def plot_confusion_matrix(cm, classes, ax=None):
 
     ax.set_ylabel('True label')
     ax.set_xlabel('Predicted label')
-    return ax
+    return ax, fig
 
 
 def plot_roc_curve(fpr, tpr, ax=None):
@@ -152,11 +154,13 @@ def plot_roc_curve(fpr, tpr, ax=None):
     tpr = tpr.cpu().numpy()
     # This function plots the ROC curve using matplotlib and returns the plot as a figure
     if ax is None:
-        _, ax = plt.subplots()
+        fig, ax = plt.subplots()
+    else:
+        fig = ax.figure
     ax.plot(fpr, tpr, color='darkorange', lw=2, label='ROC curve')
     ax.plot([0, 1], [0, 1], color='navy', lw=2, linestyle='--')
     ax.set_xlabel('False Positive Rate')
     ax.set_ylabel('True Positive Rate')
     ax.set_title('Receiver Operating Characteristic Curve')
     ax.legend(loc="lower right")
-    return ax
+    return ax, fig
