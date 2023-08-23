@@ -5,6 +5,7 @@ import numpy as np
 import itertools
 from dataloader import denormalize
 import matplotlib.pyplot as plt
+import os
 
 
 class BinaryFocalLoss(nn.Module):
@@ -121,6 +122,8 @@ def validate(args, model, val_loader, criterion, device, epoch, writer, is_test=
         _, fig = plot_roc_curve(fpr, tpr)
         writer.add_figure('Valid/ROC_Curve', fig, epoch)
 
+        if not os.path.exists(args.model_path):
+            os.makedirs(args.model_path)
         torch.save(model.state_dict(), f'{args.model_path}{args.model_name}-{epoch}.h5')
 
     return average_loss, accuracy, precision, recall

@@ -168,7 +168,7 @@ class Network(nn.Module):
         self.network_type = network_type
         self.img_size = img_size
 
-        if use_pretrained_resnet:
+        if use_pretrained_resnet or network_type == 5:
             encoder = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
             modules = list(encoder.children())[:-3]
             self.encoder = nn.Sequential(
