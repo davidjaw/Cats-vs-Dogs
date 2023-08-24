@@ -12,14 +12,17 @@ class Image2Seq(nn.Module):
         patch_size = img_size // N
         assert patch_size * N == img_size, "img_size must be divisible by N"
 
-        self.patch_embedding = nn.Conv2d(channels, emb_size, kernel_size=patch_size, stride=patch_size, groups=4)
-        self.pos_embedding = nn.Parameter(torch.randn(1, N * N, emb_size))
+        self.patch_embedding = nn.Conv2d(channels, emb_size, kernel_size=patch_size, stride=patch_size, groups=4, bias=False)
+        self.pos_embedding = nn.Parameter(torch.randn(1, N * N + 1, emb_size))
+        self.class_token = nn.Parameter(torch.randn(1, 1, emb_size))
         self.batch_first = batch_first
 
     def forward(self, x):
         # input: [B, C, H, W]
         x = self.patch_embedding(x)       # [B, emb_size, N, N]
         x = x.flatten(2).transpose(1, 2)  # [B, N * N, emb_size]
+        class_token = self.class_token.expand(x.shape[0], -1, -1)
+        x = torch.cat((class_token, x), dim=1)
         x = x + self.pos_embedding        # [B, N * N, emb_size]
         if not self.batch_first:
             # [N * N, B, emb_size]
@@ -42,15 +45,17 @@ class ViTEncoderLayer(nn.Module):
         self.img2seq = Image2Seq(img_size, N, in_channels, emb_size, batch_first)
         transformer_encoder_func = partial(nn.TransformerEncoderLayer, d_model=emb_size, nhead=nhead,
                                            dim_feedforward=emb_size, dropout=dropout, batch_first=batch_first)
-        self.transformer_encoder = nn.Sequential(
-            transformer_encoder_func(),
-            transformer_encoder_func(),
-            transformer_encoder_func(),
-        )
+        self.transformer_network = nn.ModuleList([
+            nn.Sequential(
+                transformer_encoder_func(),
+                transformer_encoder_func(),
+            ) for _ in range(3)
+        ])
 
     def forward(self, x):
         x = self.img2seq(x)
-        x = self.transformer_encoder(x)
+        for transformer in self.transformer_network:
+            x = transformer(x)
         return x
 
 
@@ -167,6 +172,7 @@ class Network(nn.Module):
         flat = nn.Flatten()
         self.network_type = network_type
         self.img_size = img_size
+        self.N = None
 
         if use_pretrained_resnet or network_type == 5:
             encoder = torchvision.models.resnet50(weights=ResNet50_Weights.IMAGENET1K_V2)
@@ -222,39 +228,51 @@ class Network(nn.Module):
                     LayerNorm(512, data_format='channels_first'),
                 ),
             )
-        else:
-            if network_type == 3:
-                block = lambda dim: partial(ResNetBlk, act=activation, group=True, down_sample=False)(dim, dim)
-            else:
-                block = partial(ConvNeXtV2Blk, act=activation)
-            # Image transformer + ConvNextv2
+        elif network_type == 3:
+            # ResNeXt-ViT
+            self.N = 7
             self.encoder = nn.Sequential(
                 nn.Sequential(
-                    nn.Conv2d(3, 64, kernel_size=11, stride=2, padding=5, bias=False),
-                    nn.BatchNorm2d(64),
-                    activation(),
-                    block(64),
-                    block(64),
+                    nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3, bias=False),
+                    # 112 x 112
+                    ResNetBlk(64, 64, down_sample=False, group=True),
                 ),
                 nn.Sequential(
                     nn.Conv2d(64, 128, kernel_size=1, stride=1),
                     nn.MaxPool2d(2, 2),
+                    # 56 x 56
                     nn.BatchNorm2d(128),
                     activation(),
-                    block(128),
-                    block(128),
+                    ResNetBlk(128, 128, down_sample=False, group=True),
+                    ResNetBlk(128, 128, down_sample=False, group=True),
                 ),
                 nn.Sequential(
-                    nn.Conv2d(128, 256, kernel_size=1, groups=8),
+                    nn.Conv2d(128, 256, kernel_size=1, stride=1),
                     nn.MaxPool2d(2, 2),
-                    LayerNorm(256, data_format='channels_first'),
+                    # 28 x 28
+                    nn.BatchNorm2d(256),
                     activation(),
-                    block(256),
+                    ResNetBlk(256, 256, down_sample=False, group=True),
+                    ResNetBlk(256, 256, down_sample=False, group=True),
                 ),
+                ViTEncoderLayer(img_size // 8, self.N, 256, 128, 4, batch_first=True),
                 nn.Sequential(
-                    LayerNorm(256, data_format='channels_first'),
-                    ViTEncoderLayer(img_size // 8, 7, 256, 128, 4, batch_first=True),
-                    nn.Linear(128, 256),
+                    nn.Linear(128, 512),
+                    nn.LayerNorm(512),
+                    activation(),
+                )
+            )
+        elif network_type == 4:
+            # Pure image transformer
+            self.N = 16
+            self.encoder = nn.Sequential(
+                nn.Sequential(
+                    nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3),
+                    nn.BatchNorm2d(64),
+                ),
+                ViTEncoderLayer(img_size // 2, self.N, 64, 256, 8, batch_first=True),
+                nn.Sequential(
+                    nn.Linear(256, 256),
                     nn.LayerNorm(256),
                     activation(),
                 ),
@@ -284,7 +302,8 @@ class Network(nn.Module):
         # encoder part
         x = self.encoder(x)
         if self.network_type >= 3 and self.network_type != 5:
-            xs = x.reshape(x.shape[0], 7, 7, -1).permute(0, 3, 1, 2)
+            xs = x[:, :-1, :]  # remove the class token
+            xs = xs.reshape(x.shape[0], self.N, self.N, -1).permute(0, 3, 1, 2)
             reconstructed_img = self.mae(xs)
             # for vision transformer, get the last sequence output
             x = x[:, -1, :]
@@ -298,7 +317,7 @@ class Network(nn.Module):
 if __name__ == '__main__':
     from torchinfo import summary
     for i in range(6):
-        if i < 5:
+        if i > 4 or i < 3:
             continue
         print('Network type:', i)
         pretrained_res50 = i == 5

@@ -69,6 +69,7 @@ if __name__ == '__main__':
         print(f'Loaded model from {args.model_path + args.model_name + ".h5"}')
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f'Using {device} for training and testing.')
     model = model.to(device)
 
     if args.train_mode:
